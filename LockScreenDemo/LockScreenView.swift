@@ -5,7 +5,7 @@ struct LockScreenSettings {
     var passcodeLength: Int
     var passcode: String
     
-    static let `default` = LockScreenSettings(passcodeLength: 6, passcode: "123456")
+    static let `default` = LockScreenSettings(passcodeLength: 4, passcode: "1234")
 }
 
 // Structure to store passcode attempts
