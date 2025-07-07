@@ -39,8 +39,8 @@ struct LockScreenInterfaceView: View {
                                 .frame(width: 12, height: 12)
                         } else if showLastFourDigits && index < lastFourDigitsToShow.count {
                             Text(lastFourDigitsToShow[index])
-                                .font(.title3)
-                                .foregroundColor(.red)
+                                .font(.title3.weight(.bold))
+                                .foregroundColor(.white)
                                 .frame(width: 12, height: 12)
                         } else {
                             Circle()

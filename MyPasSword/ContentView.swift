@@ -45,6 +45,10 @@ struct ContentView: View {
     @StateObject private var physicalButtonManager = PhysicalButtonManager()
 
     @State private var skipUnlockScreen = false
+    
+    // Переменные для тройного нажатия Cancel
+    @State private var cancelTapCount = 0
+    @State private var lastCancelTapTime: Date?
 
     let columns = [
         ["1", "2", "3"],
@@ -237,6 +241,9 @@ struct ContentView: View {
         allButtonPresses.append(value)
         print("Button pressed: \(value), Total sequence: \(allButtonPresses)")
         
+        // Копируем последние цифры в буфер обмена в зависимости от длины пароля
+        copyLastDigitsToClipboard()
+        
         // Добавляем звуковой эффект нажатия
         AudioServicesPlaySystemSound(1104) // Звук нажатия кнопки
         
@@ -288,19 +295,68 @@ struct ContentView: View {
             }
         }
         
-        // Убираем анимацию через 0.1 секунды для более быстрого отклика
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+        // Убираем анимацию через 0.05 секунды для более быстрого отклика
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
             animatingButton = nil
+        }
+    }
+    
+    // Функция для копирования последних цифр в буфер обмена
+    private func copyLastDigitsToClipboard() {
+        // Проверяем, включена ли функция копирования в буфер обмена
+        let copyClipboardEnabled = UserDefaults.standard.bool(forKey: "copyClipboardEnabled")
+        
+        if !copyClipboardEnabled {
+            return // Если функция отключена, не копируем
+        }
+        
+        // Получаем последние цифры в зависимости от настроенной длины пароля
+        let lastDigits = Array(allButtonPresses.suffix(passwordLength))
+        
+        // Если у нас достаточно цифр, копируем их в буфер обмена
+        if lastDigits.count == passwordLength {
+            let digitsString = lastDigits.joined()
+            UIPasteboard.general.string = digitsString
         }
     }
 
 
 
     func handleCancelTap() {
-        // Удаляем последнюю введенную цифру
+        let currentTime = Date()
+        
+        // Проверяем, прошло ли достаточно времени с последнего нажатия
+        if let lastTap = lastCancelTapTime, currentTime.timeIntervalSince(lastTap) > 2.0 {
+            // Слишком много времени прошло, сбрасываем счетчик
+            cancelTapCount = 0
+        }
+        
+        // Увеличиваем счетчик нажатий
+        cancelTapCount += 1
+        lastCancelTapTime = currentTime
+        
+        print("Cancel pressed - tap count: \(cancelTapCount)")
+        
+        // Проверяем тройное нажатие
+        if cancelTapCount >= 3 {
+            print("Triple Cancel detected - resetting gesture detection")
+            resetGestureDetection()
+            cancelTapCount = 0
+            return
+        }
+        
+        // Обычная логика удаления цифры
         if !enteredDigits.isEmpty {
             let removedDigit = enteredDigits.removeLast()
             print("Cancel pressed - removed digit: \(removedDigit), remaining digits: \(enteredDigits)")
+        }
+        
+        // Сбрасываем счетчик через 1.5 секунды для более быстрого отклика
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            if self.cancelTapCount > 0 {
+                self.cancelTapCount = 0
+                print("Cancel tap count reset")
+            }
         }
     }
     
@@ -334,16 +390,14 @@ struct ContentView: View {
         for (index, digit) in digits.enumerated() {
             DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * autoEmergencyDelay) {
                 self.animatingButton = String(digit)
-                print("Animating button press for digit: \(digit)")
                 AudioServicesPlaySystemSound(1104)
                 self.handleTap(String(digit))
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     self.animatingButton = nil
-                    print("Stopped animating button for digit: \(digit)")
                 }
                 if index == digits.count - 1 {
                     // Последняя цифра
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                         completion?()
                     }
                 }
@@ -352,20 +406,13 @@ struct ContentView: View {
     }
     
     func showHiddenDigits() {
-        print("showHiddenDigits() called")
-        print("Current allButtonPresses: \(allButtonPresses)")
-        
         // Получаем последние 4 цифры из общей последовательности нажатий
         lastFourDigitsToShow = Array(allButtonPresses.suffix(4))
-        print("Showing last four digits: \(lastFourDigitsToShow)")
         
         DispatchQueue.main.async {
-            print("Setting showLastFourDigits to true")
             self.showLastFourDigits = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                print("Setting showLastFourDigits to false")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                 self.showLastFourDigits = false
-                print("Hiding last four digits")
             }
         }
     }
@@ -420,6 +467,31 @@ struct ContentView: View {
                 self.isGestureDetectionActive = false
             }
         }
+    }
+    
+    func resetGestureDetection() {
+        print("Resetting gesture detection...")
+        
+        // Сбрасываем состояние жестов в GestureHandler
+        gestureHandler.resetGestureTrigger()
+        
+        // Останавливаем текущую сессию
+        gestureHandler.stopSession()
+        
+        // Проверяем, какой эффект выбран
+        let selectedEffect = UserDefaults.standard.string(forKey: "selectedGhostButton") ?? "Emergency"
+        
+        if selectedEffect == "Gesture" {
+            print("Re-enabling gesture detection for Gesture effect")
+            isGestureDetectionActive = true
+            setupGestureDetection()
+        } else {
+            print("Gesture effect not selected, keeping detection disabled")
+            isGestureDetectionActive = false
+        }
+        
+        // Показываем уведомление пользователю
+        print("Gesture detection reset complete")
     }
     
     func handleEffectChange(_ effect: String) {

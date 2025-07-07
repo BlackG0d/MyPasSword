@@ -55,32 +55,32 @@ struct InsetNeumorphicModifier: ViewModifier {
 // MARK: - Instructions Button Component
 struct InstructionsButton: View {
     var body: some View {
-        Button(action: {
-            print("Instructions button tapped")
-        }) {
-            HStack {
-                Image(systemName: "questionmark.circle.fill")
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundColor(.blue)
-                Text("Instructions")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundColor(.primary)
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(.gray)
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
-            .background(
-                RoundedRectangle(cornerRadius: 20)
-                    .fill(Color(.systemGray6))
-                    .shadow(color: Color.white.opacity(0.9), radius: 8, x: -4, y: -4)
-                    .shadow(color: Color.black.opacity(0.15), radius: 8, x: 4, y: 4)
-            )
-        }
-        .buttonStyle(PlainButtonStyle())
-        .padding(.horizontal, 16)
+                        Button(action: {
+                            print("Instructions button tapped")
+                        }) {
+                            HStack {
+                                Image(systemName: "questionmark.circle.fill")
+                                    .font(.system(size: 20, weight: .medium))
+                                    .foregroundColor(.blue)
+                                Text("Instructions")
+                                    .font(.system(size: 18, weight: .medium))
+                                    .foregroundColor(.primary)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 16, weight: .medium))
+                                    .foregroundColor(.gray)
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 16)
+                            .background(
+                                RoundedRectangle(cornerRadius: 20)
+                                    .fill(Color(.systemGray6))
+                                    .shadow(color: Color.white.opacity(0.9), radius: 8, x: -4, y: -4)
+                                    .shadow(color: Color.black.opacity(0.15), radius: 8, x: 4, y: 4)
+                            )
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .padding(.horizontal, 16)
     }
 }
 
@@ -89,22 +89,22 @@ struct PasscodeLengthSection: View {
     @Binding var tempLength: Int
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Passcode Length")
-                .font(.headline)
-                .foregroundColor(.primary)
-                .padding(.horizontal, 20)
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("Passcode Length")
+                                .font(.headline)
+                                .foregroundColor(.primary)
+                                .padding(.horizontal, 20)
 
-            Picker("Passcode Length", selection: $tempLength) {
-                Text("4 digits").tag(4)
-                Text("6 digits").tag(6)
-            }
-            .pickerStyle(SegmentedPickerStyle())
-            .padding(.horizontal, 20)
-        }
-        .padding(.vertical, 12)
-        .neumorphic()
-        .padding(.horizontal, 16)
+                            Picker("Passcode Length", selection: $tempLength) {
+                                Text("4 digits").tag(4)
+                                Text("6 digits").tag(6)
+                            }
+                            .pickerStyle(SegmentedPickerStyle())
+                            .padding(.horizontal, 20)
+                        }
+                        .padding(.vertical, 12)
+                        .neumorphic()
+                        .padding(.horizontal, 16)
     }
 }
 
@@ -114,43 +114,85 @@ struct PasswordSetupSection: View {
     @Binding var showingPasswordInput: Bool
     
     var body: some View {
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("Set Passcode")
+                                .font(.headline)
+                                .foregroundColor(.primary)
+                                .padding(.horizontal, 20)
+                            Button(action: {
+                                showingPasswordInput = true
+                            }) {
+                                HStack {
+                                    if tempPassword.isEmpty {
+                                        Text("Set Passcode")
+                                            .font(.body)
+                                            .foregroundColor(.blue)
+                                    } else {
+                                        Text(tempPassword)
+                                            .font(.title2)
+                                            .foregroundColor(.black)
+                                    }
+                                    Spacer()
+                                    if !tempPassword.isEmpty {
+                                        Button(action: {
+                                            tempPassword = ""
+                                        }) {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .foregroundColor(.red)
+                                                .font(.title2)
+                                        }
+                                        .buttonStyle(PlainButtonStyle())
+                                    }
+                                }
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 16)
+                                .background(Color.white)
+                                .cornerRadius(16)
+                                .insetNeumorphic(cornerRadius: 16)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                        .padding(.vertical, 12)
+                        .neumorphic()
+                        .padding(.horizontal, 16)
+    }
+}
+
+// MARK: - Copy Clipboard Toggle Component
+struct CopyClipboardToggle: View {
+    @State private var copyClipboardEnabled = UserDefaults.standard.bool(forKey: "copyClipboardEnabled")
+    
+    var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Set Passcode")
+            Text("Copy Clipboard")
                 .font(.headline)
                 .foregroundColor(.primary)
                 .padding(.horizontal, 20)
-            Button(action: {
-                showingPasswordInput = true
-            }) {
-                HStack {
-                    if tempPassword.isEmpty {
-                        Text("Set Passcode")
-                            .font(.body)
-                            .foregroundColor(.blue)
-                    } else {
-                        Text(tempPassword)
-                            .font(.title2)
-                            .foregroundColor(.black)
-                    }
-                    Spacer()
-                    if !tempPassword.isEmpty {
-                        Button(action: {
-                            tempPassword = ""
-                        }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(.red)
-                                .font(.title2)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
+            
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Auto-copy last digits")
+                        .font(.body)
+                    Text("Copy last 4 or 6 digits to clipboard when typing")
+                        .font(.caption)
+                        .foregroundColor(.gray)
                 }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 16)
-                .background(Color.white)
-                .cornerRadius(16)
-                .insetNeumorphic(cornerRadius: 16)
+                Spacer()
+                Toggle("", isOn: $copyClipboardEnabled)
+                    .labelsHidden()
+                    .onChange(of: copyClipboardEnabled) { oldValue, newValue in
+                        UserDefaults.standard.set(newValue, forKey: "copyClipboardEnabled")
+                        print("Copy Clipboard toggle changed to: \(newValue)")
+                    }
             }
-            .buttonStyle(PlainButtonStyle())
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color(.systemGray6))
+                    .shadow(color: Color.white.opacity(0.9), radius: 6, x: -3, y: -3)
+                    .shadow(color: Color.black.opacity(0.15), radius: 6, x: 3, y: 3)
+            )
         }
         .padding(.vertical, 12)
         .neumorphic()
@@ -237,78 +279,78 @@ struct ModsSection: View {
     @Binding var selectedGhostButton: String?
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Mods")
-                .font(.headline)
-                .foregroundColor(.primary)
-                .padding(.horizontal, 20)
-            VStack(spacing: 12) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Password Matching")
-                            .font(.body)
-                        Text("App will crash when any password is entered")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                    }
-                    Spacer()
-                    Toggle("", isOn: $matchingModeEnabled)
-                        .labelsHidden()
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 16)
-                .background(
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(Color(.systemGray6))
-                        .shadow(color: Color.white.opacity(0.9), radius: 6, x: -3, y: -3)
-                        .shadow(color: Color.black.opacity(0.15), radius: 6, x: 3, y: 3)
-                )
-                
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Ghost Effect")
-                            .font(.body)
-                        Text(passcodeSetSuccess ? "Em\u{00EA}rgency" : "Emergency")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                    }
-                    Spacer()
-                    Toggle("", isOn: $autoEmergencyModeEnabled)
-                        .labelsHidden()
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 16)
-                .background(
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(Color(.systemGray6))
-                        .shadow(color: Color.white.opacity(0.9), radius: 6, x: -3, y: -3)
-                        .shadow(color: Color.black.opacity(0.15), radius: 6, x: 3, y: 3)
-                )
-                
-                if autoEmergencyModeEnabled {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("Delay between digits")
-                                .font(.caption)
-                                .foregroundColor(.gray)
-                            Spacer()
-                            Text(String(format: "%.1fs", autoEmergencyDelay))
-                                .font(.caption)
-                                .foregroundColor(.blue)
-                        }
-                        Slider(value: $autoEmergencyDelay, in: 0.5...10.0, step: 0.1)
-                            .accentColor(.blue)
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Color(.systemGray6))
-                            .shadow(color: Color.white.opacity(0.9), radius: 4, x: -2, y: -2)
-                            .shadow(color: Color.black.opacity(0.15), radius: 4, x: 2, y: 2)
-                    )
-                }
-                
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("Mods")
+                                .font(.headline)
+                                .foregroundColor(.primary)
+                                .padding(.horizontal, 20)
+                            VStack(spacing: 12) {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text("Password Matching")
+                                            .font(.body)
+                                        Text("App will crash when any password is entered")
+                                            .font(.caption)
+                                            .foregroundColor(.gray)
+                                    }
+                                    Spacer()
+                                    Toggle("", isOn: $matchingModeEnabled)
+                                        .labelsHidden()
+                                }
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 16)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 16)
+                                        .fill(Color(.systemGray6))
+                                        .shadow(color: Color.white.opacity(0.9), radius: 6, x: -3, y: -3)
+                                        .shadow(color: Color.black.opacity(0.15), radius: 6, x: 3, y: 3)
+                                )
+                                
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text("Ghost Effect")
+                                            .font(.body)
+                                        Text(passcodeSetSuccess ? "Em\u{00EA}rgency" : "Emergency")
+                                            .font(.caption)
+                                            .foregroundColor(.gray)
+                                    }
+                                    Spacer()
+                                    Toggle("", isOn: $autoEmergencyModeEnabled)
+                                        .labelsHidden()
+                                }
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 16)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 16)
+                                        .fill(Color(.systemGray6))
+                                        .shadow(color: Color.white.opacity(0.9), radius: 6, x: -3, y: -3)
+                                        .shadow(color: Color.black.opacity(0.15), radius: 6, x: 3, y: 3)
+                                )
+                                
+                                if autoEmergencyModeEnabled {
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        HStack {
+                                            Text("Delay between digits")
+                                                .font(.caption)
+                                                .foregroundColor(.gray)
+                                            Spacer()
+                                            Text(String(format: "%.1fs", autoEmergencyDelay))
+                                                .font(.caption)
+                                                .foregroundColor(.blue)
+                                        }
+                                        Slider(value: $autoEmergencyDelay, in: 0.5...10.0, step: 0.1)
+                                            .accentColor(.blue)
+                                    }
+                                    .padding(.horizontal, 20)
+                                    .padding(.vertical, 12)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .fill(Color(.systemGray6))
+                                            .shadow(color: Color.white.opacity(0.9), radius: 4, x: -2, y: -2)
+                                            .shadow(color: Color.black.opacity(0.15), radius: 4, x: 2, y: 2)
+                                    )
+                                }
+                                
                 // Ghost Effect controls
                 GhostEffectControls(selectedGhostButton: $selectedGhostButton)
             }
@@ -319,18 +361,19 @@ struct ModsSection: View {
     }
 }
 
-// MARK: - API Status Section Component
+// MARK: - Inject API Section Component
 struct APISection: View {
     @ObservedObject var apiService: PasswordAPIService
+    @Binding var tempPassword: String
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("API Status")
+            Text("Inject API")
                 .font(.headline)
                 .foregroundColor(.primary)
                 .padding(.horizontal, 20)
             
-            VStack(spacing: 12) {
+                                VStack(spacing: 12) {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Auto Monitor")
@@ -364,13 +407,43 @@ struct APISection: View {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Text("User ID")
-                                .font(.caption)
-                                .foregroundColor(.gray)
+                                        .font(.caption)
+                                        .foregroundColor(.gray)
                             Spacer()
+                            
+                            // Instant Catch Button (ещё больше с полным текстом)
+                            Button(action: {
+                                apiService.instantCatch { password in
+                                    if let password = password {
+                                        UserDefaults.standard.set(password, forKey: "userPassword")
+                                        NotificationCenter.default.post(name: .passwordUpdatedFromAPI, object: password)
+                                        // Мгновенно устанавливаем пароль в Set Passcode
+                                        DispatchQueue.main.async {
+                                            tempPassword = password
+                                        }
+                                    }
+                                }
+                            }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "bolt.fill")
+                                        .font(.system(size: 14, weight: .medium))
+                                        .foregroundColor(.white)
+                                    Text("Instant Catch")
+                                        .font(.system(size: 13, weight: .medium))
+                                        .foregroundColor(.white)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Color.orange)
+                                .cornerRadius(10)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            
                             TextField("Enter User ID", text: $apiService.userID)
                                 .textFieldStyle(RoundedBorderTextFieldStyle())
                                 .frame(width: 120)
                         }
+                        
                         HStack {
                             Text("Last Update")
                                 .font(.caption)
@@ -380,6 +453,7 @@ struct APISection: View {
                                 .font(.caption)
                                 .foregroundColor(.blue)
                         }
+                        
                         HStack {
                             Text("Status")
                                 .font(.caption)
@@ -389,52 +463,90 @@ struct APISection: View {
                                 .font(.caption)
                                 .foregroundColor(apiService.isLoading ? .orange : .green)
                         }
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Color(.systemGray6))
-                            .shadow(color: Color.white.opacity(0.9), radius: 4, x: -2, y: -2)
-                            .shadow(color: Color.black.opacity(0.15), radius: 4, x: 2, y: 2)
-                    )
+                                }
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 12)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(Color(.systemGray6))
+                                        .shadow(color: Color.white.opacity(0.9), radius: 4, x: -2, y: -2)
+                                        .shadow(color: Color.black.opacity(0.15), radius: 4, x: 2, y: 2)
+                                )
                 }
-            }
-        }
-        .padding(.vertical, 12)
-        .neumorphic()
-        .padding(.horizontal, 16)
+                            }
+                        }
+                        .padding(.vertical, 12)
+                        .neumorphic()
+                        .padding(.horizontal, 16)
     }
 }
 
 // MARK: - Background Settings Section Component
 struct BackgroundSettingsSection: View {
     @ObservedObject var backgroundManager: BackgroundManager
-    @State private var showingImagePicker = false
     @State private var selectedItem: PhotosPickerItem?
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 16) {
             Text("Background Settings")
-                .font(.headline)
-                .foregroundColor(.primary)
-                .padding(.horizontal, 20)
+                                .font(.headline)
+                                .foregroundColor(.primary)
+                                .padding(.horizontal, 20)
             
-            VStack(spacing: 12) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Custom Background")
-                            .font(.body)
-                        Text("Set your own background image")
-                            .font(.caption)
-                            .foregroundColor(.gray)
+                            VStack(spacing: 16) {
+                // Image preview
+                if let image = backgroundManager.selectedImage {
+                    VStack(spacing: 8) {
+                        Text("Current Background")
+                                        .font(.caption)
+                                        .foregroundColor(.gray)
+                        
+                        PhotosPicker(selection: $selectedItem, matching: .images) {
+                            Image(uiImage: image)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 80, height: 80)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                                )
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .onChange(of: selectedItem) { oldValue, newItem in
+                            Task {
+                                if let newItem = newItem,
+                                   let data = try? await newItem.loadTransferable(type: Data.self),
+                                   let image = UIImage(data: data) {
+                                    backgroundManager.saveImage(image)
+                                }
+                            }
+                        }
                     }
-                    Spacer()
+                }
+                
+                // Photo picker button - показывается только если изображение не выбрано
+                if !backgroundManager.isImageSelected {
                     PhotosPicker(selection: $selectedItem, matching: .images) {
-                        Image(systemName: "photo")
-                            .font(.title2)
-                            .foregroundColor(.blue)
-                    }
+                        HStack {
+                            Image(systemName: "photo.fill")
+                                .font(.system(size: 18, weight: .medium))
+                                .foregroundColor(.blue)
+                            Text("Select Background")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.primary)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(.gray)
+                        }
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 12)
+                                        .background(Color.white)
+                                        .cornerRadius(12)
+                                        .insetNeumorphic(cornerRadius: 12)
+                                }
+                    .buttonStyle(PlainButtonStyle())
                     .onChange(of: selectedItem) { oldValue, newItem in
                         Task {
                             if let newItem = newItem,
@@ -445,46 +557,35 @@ struct BackgroundSettingsSection: View {
                         }
                     }
                 }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 16)
-                .background(
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(Color(.systemGray6))
-                        .shadow(color: Color.white.opacity(0.9), radius: 6, x: -3, y: -3)
-                        .shadow(color: Color.black.opacity(0.15), radius: 6, x: 3, y: 3)
-                )
                 
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Reset to Default")
-                            .font(.body)
-                        Text("Remove custom background")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                    }
-                    Spacer()
+                // Clear background button
+                if backgroundManager.isImageSelected {
                     Button(action: {
                         backgroundManager.clearImage()
-                    }) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.title2)
-                            .foregroundColor(.red)
+                                }) {
+                                    HStack {
+                            Image(systemName: "trash.fill")
+                                .font(.system(size: 18, weight: .medium))
+                                .foregroundColor(.red)
+                            Text("Remove Background")
+                                            .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.red)
+                            Spacer()
+                                    }
+                        .padding(.horizontal, 16)
+                                    .padding(.vertical, 12)
+                        .background(Color.white)
+                        .cornerRadius(12)
+                        .insetNeumorphic(cornerRadius: 12)
                     }
+                    .buttonStyle(PlainButtonStyle())
                 }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 16)
-                .background(
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(Color(.systemGray6))
-                        .shadow(color: Color.white.opacity(0.9), radius: 6, x: -3, y: -3)
-                        .shadow(color: Color.black.opacity(0.15), radius: 6, x: 3, y: 3)
-                )
-            }
-        }
-        .padding(.vertical, 12)
-        .neumorphic()
-        .padding(.horizontal, 16)
-    }
+                            }
+                        }
+                        .padding(.vertical, 8)
+                        .neumorphic()
+                        .padding(.horizontal, 16)
+                    }
 }
 
 // MARK: - Alibi Image Section Component
@@ -507,45 +608,59 @@ struct AlibiImageSection: View {
                             .font(.caption)
                             .foregroundColor(.gray)
                         
-                        Image(uiImage: image)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 80, height: 80)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color.gray.opacity(0.3), lineWidth: 1)
-                            )
+                        PhotosPicker(selection: $selectedAlibiItem, matching: .images) {
+                            Image(uiImage: image)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 80, height: 80)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                                )
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .onChange(of: selectedAlibiItem) { oldValue, newItem in
+                            Task {
+                                if let newItem = newItem,
+                                   let data = try? await newItem.loadTransferable(type: Data.self),
+                                   let image = UIImage(data: data) {
+                                    alibiManager.saveImage(image)
+                                }
+                            }
+                        }
                     }
                 }
                 
-                // Photo picker button
-                PhotosPicker(selection: $selectedAlibiItem, matching: .images) {
-                    HStack {
-                        Image(systemName: "photo.fill")
-                            .font(.system(size: 18, weight: .medium))
-                            .foregroundColor(.blue)
-                        Text(alibiManager.isImageSelected ? "Change Alibi" : "Select Alibi")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(.primary)
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(.gray)
+                // Photo picker button - показывается только если изображение не выбрано
+                if !alibiManager.isImageSelected {
+                    PhotosPicker(selection: $selectedAlibiItem, matching: .images) {
+                        HStack {
+                            Image(systemName: "photo.fill")
+                                .font(.system(size: 18, weight: .medium))
+                                .foregroundColor(.blue)
+                            Text("Select Alibi")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.primary)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(.gray)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .background(Color.white)
+                        .cornerRadius(12)
+                        .insetNeumorphic(cornerRadius: 12)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .background(Color.white)
-                    .cornerRadius(12)
-                    .insetNeumorphic(cornerRadius: 12)
-                }
-                .buttonStyle(PlainButtonStyle())
-                .onChange(of: selectedAlibiItem) { oldValue, newItem in
-                    Task {
-                        if let newItem = newItem,
-                           let data = try? await newItem.loadTransferable(type: Data.self),
-                           let image = UIImage(data: data) {
-                            alibiManager.saveImage(image)
+                    .buttonStyle(PlainButtonStyle())
+                    .onChange(of: selectedAlibiItem) { oldValue, newItem in
+                        Task {
+                            if let newItem = newItem,
+                               let data = try? await newItem.loadTransferable(type: Data.self),
+                               let image = UIImage(data: data) {
+                                alibiManager.saveImage(image)
+                            }
                         }
                     }
                 }
@@ -580,107 +695,7 @@ struct AlibiImageSection: View {
     }
 }
 
-// MARK: - Password Settings Section Component
-struct PasswordSettingsSection: View {
-    @Binding var passwordLength: Int
-    @Binding var tempLength: Int
-    @Binding var originalLength: Int
-    @Binding var tempPassword: String
-    @Binding var confirmPassword: String
-    @Binding var showingPasswordInput: Bool
-    @Binding var passwordError: String
-    @Binding var passcodeSetSuccess: Bool
-    let onSettingsChanged: () -> Void
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Password Settings")
-                .font(.headline)
-                .foregroundColor(.primary)
-                .padding(.horizontal, 20)
-            
-            VStack(spacing: 12) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Password Length")
-                            .font(.body)
-                        Text("Number of digits in passcode")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    Spacer()
-                    HStack(spacing: 8) {
-                        Button(action: {
-                            if tempLength > 4 {
-                                tempLength -= 1
-                            }
-                        }) {
-                            Image(systemName: "minus.circle.fill")
-                                .font(.title2)
-                                .foregroundColor(.blue)
-                        }
-                        .disabled(tempLength <= 4)
-                        
-                        Text("\(tempLength)")
-                            .font(.headline)
-                            .foregroundColor(.primary)
-                            .frame(minWidth: 30)
-                        
-                        Button(action: {
-                            if tempLength < 8 {
-                                tempLength += 1
-                            }
-                        }) {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.title2)
-                                .foregroundColor(.blue)
-                        }
-                        .disabled(tempLength >= 8)
-                    }
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
-                .background(Color(.systemGray6))
-                .cornerRadius(12)
-                
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Set New Password")
-                            .font(.body)
-                        Text("Change the current passcode")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    Spacer()
-                    Button(action: {
-                        tempPassword = ""
-                        confirmPassword = ""
-                        passwordError = ""
-                        showingPasswordInput = true
-                    }) {
-                        Image(systemName: "key.fill")
-                            .font(.title2)
-                            .foregroundColor(.orange)
-                    }
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
-                .background(Color(.systemGray6))
-                .cornerRadius(12)
-            }
-        }
-        .sheet(isPresented: $showingPasswordInput) {
-            PasswordInputSheet(
-                tempPassword: $tempPassword,
-                confirmPassword: $confirmPassword,
-                passwordError: $passwordError,
-                passcodeSetSuccess: $passcodeSetSuccess,
-                showingPasswordInput: $showingPasswordInput,
-                onSettingsChanged: onSettingsChanged
-            )
-        }
-    }
-}
+
 
 // MARK: - Password Input Sheet
 struct PasswordInputSheet: View {
@@ -713,11 +728,11 @@ struct PasswordInputSheet: View {
                         .textFieldStyle(RoundedBorderTextFieldStyle())
                         .keyboardType(.numberPad)
                 }
-                
-                if !passwordError.isEmpty {
-                    Text(passwordError)
+                    
+                    if !passwordError.isEmpty {
+                        Text(passwordError)
                         .foregroundColor(.red)
-                        .font(.caption)
+                            .font(.caption)
                 }
                 
                 Spacer()
@@ -789,6 +804,9 @@ struct SecretMenuView: View {
                         // Password setup section
                         PasswordSetupSection(tempPassword: $tempPassword, showingPasswordInput: $showingPasswordInput)
                         
+                        // Copy Clipboard toggle
+                        CopyClipboardToggle()
+                        
                         // Mods section
                         ModsSection(matchingModeEnabled: $matchingModeEnabled, autoEmergencyModeEnabled: $autoEmergencyModeEnabled, autoEmergencyDelay: $autoEmergencyDelay, passcodeSetSuccess: $passcodeSetSuccess, selectedGhostButton: $selectedGhostButton)
                         
@@ -799,34 +817,31 @@ struct SecretMenuView: View {
                         AlibiImageSection(alibiManager: alibiManager)
 
                         // API Status Section
-                        APISection(apiService: apiService)
-
-                        // Password Settings Section
-                        PasswordSettingsSection(passwordLength: $passwordLength, tempLength: $tempLength, originalLength: $originalLength, tempPassword: $tempPassword, confirmPassword: $confirmPassword, showingPasswordInput: $showingPasswordInput, passwordError: $passwordError, passcodeSetSuccess: $passcodeSetSuccess, onSettingsChanged: onSettingsChanged)
-
-                        // Save Button
-                        Button(action: {
-                            saveSettings()
-                        }) {
-                            Text("Save Settings")
-                                .font(.system(size: 18, weight: .medium))
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
-                                .background(Color.blue)
-                                .cornerRadius(16)
-                                .neumorphic()
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.top, 8)
+                        APISection(apiService: apiService, tempPassword: $tempPassword)
                     }
                 }
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
-            .navigationBarItems(trailing: Button("Done") {
-                showSecretMenu = false
-            })
+            .navigationBarItems(
+                leading: Button("Cancel") {
+                    showSecretMenu = false
+                },
+                trailing: Button("Save") {
+                    saveSettings()
+                    showSecretMenu = false
+                }
+            )
+        }
+        .sheet(isPresented: $showingPasswordInput) {
+            PasswordInputView(
+                tempLength: tempLength,
+                tempPassword: $tempPassword,
+                confirmPassword: $confirmPassword,
+                passwordError: $passwordError,
+                showingPasswordInput: $showingPasswordInput,
+                passcodeSetSuccess: $passcodeSetSuccess
+            )
         }
         .onAppear {
             tempLength = passwordLength
