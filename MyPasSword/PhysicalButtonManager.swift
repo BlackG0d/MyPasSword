@@ -21,7 +21,6 @@ class VolumeButtonListener {
 
         volumeView = MPVolumeView(frame: .zero)
         volumeView.isHidden = true
-        // Используем современный API для получения окна
         if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
            let window = windowScene.windows.first {
             window.addSubview(volumeView)

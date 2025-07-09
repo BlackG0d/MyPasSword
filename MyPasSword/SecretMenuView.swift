@@ -1,6 +1,7 @@
 import SwiftUI
 import PhotosUI
 import ARKit
+import UIKit
 
 // Time formatter for API status
 private let timeFormatter: DateFormatter = {
@@ -65,7 +66,7 @@ struct InstructionsButton: View {
                                 Text("Instructions")
                                     .font(.system(size: 18, weight: .medium))
                                     .foregroundColor(.primary)
-                                Spacer()
+                                Spacer(minLength: 2)
                                 Image(systemName: "chevron.right")
                                     .font(.system(size: 16, weight: .medium))
                                     .foregroundColor(.gray)
@@ -90,10 +91,13 @@ struct PasscodeLengthSection: View {
     
     var body: some View {
                         VStack(alignment: .leading, spacing: 16) {
-                            Text("Passcode Length")
-                                .font(.headline)
-                                .foregroundColor(.primary)
-                                .padding(.horizontal, 20)
+                            HStack(spacing: 2) {
+                                Text("Passcode Length")
+                                    .font(.headline)
+                                    .foregroundColor(.primary)
+                                    .padding(.horizontal, 20)
+                                Spacer(minLength: 2)
+                            }
 
                             Picker("Passcode Length", selection: $tempLength) {
                                 Text("4 digits").tag(4)
@@ -112,49 +116,78 @@ struct PasscodeLengthSection: View {
 struct PasswordSetupSection: View {
     @Binding var tempPassword: String
     @Binding var showingPasswordInput: Bool
+    @ObservedObject var apiService: PasswordAPIService
     
     var body: some View {
-                        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Set Passcode")
+                .font(.headline)
+                .foregroundColor(.primary)
+                .padding(.horizontal, 20)
+            HStack(spacing: 12) {
+                Button(action: {
+                    showingPasswordInput = true
+                }) {
+                    HStack {
+                        if tempPassword.isEmpty {
                             Text("Set Passcode")
-                                .font(.headline)
-                                .foregroundColor(.primary)
-                                .padding(.horizontal, 20)
+                                .font(.body)
+                                .foregroundColor(.blue)
+                        } else {
+                            Text(tempPassword)
+                                .font(.title2)
+                                .foregroundColor(.black)
+                        }
+                        if !tempPassword.isEmpty {
                             Button(action: {
-                                showingPasswordInput = true
+                                tempPassword = ""
                             }) {
-                                HStack {
-                                    if tempPassword.isEmpty {
-                                        Text("Set Passcode")
-                                            .font(.body)
-                                            .foregroundColor(.blue)
-                                    } else {
-                                        Text(tempPassword)
-                                            .font(.title2)
-                                            .foregroundColor(.black)
-                                    }
-                                    Spacer()
-                                    if !tempPassword.isEmpty {
-                                        Button(action: {
-                                            tempPassword = ""
-                                        }) {
-                                            Image(systemName: "xmark.circle.fill")
-                                                .foregroundColor(.red)
-                                                .font(.title2)
-                                        }
-                                        .buttonStyle(PlainButtonStyle())
-                                    }
-                                }
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 16)
-                                .background(Color.white)
-                                .cornerRadius(16)
-                                .insetNeumorphic(cornerRadius: 16)
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(.red)
+                                    .font(.title2)
                             }
                             .buttonStyle(PlainButtonStyle())
                         }
-                        .padding(.vertical, 12)
-                        .neumorphic()
-                        .padding(.horizontal, 16)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 16)
+                    .background(Color.white)
+                    .cornerRadius(16)
+                    .insetNeumorphic(cornerRadius: 16)
+                }
+                .buttonStyle(PlainButtonStyle())
+                Button(action: {
+                    apiService.instantCatch { password in
+                        if let password = password {
+                            UserDefaults.standard.set(password, forKey: "userPassword")
+                            NotificationCenter.default.post(name: .passwordUpdatedFromAPI, object: password)
+                            DispatchQueue.main.async {
+                                tempPassword = password
+                            }
+                        }
+                    }
+                }) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "bolt.fill")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(.white)
+                        Text("Instant Catch")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(.white)
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 16)
+                    .background(Color.orange)
+                    .cornerRadius(16)
+                    .insetNeumorphic(cornerRadius: 16)
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+            .padding(.horizontal, 20)
+        }
+        .padding(.vertical, 12)
+        .neumorphic()
+        .padding(.horizontal, 16)
     }
 }
 
@@ -203,6 +236,7 @@ struct CopyClipboardToggle: View {
 // MARK: - Ghost Effect Controls Component
 struct GhostEffectControls: View {
     @Binding var selectedGhostButton: String?
+    @State private var ghostVolumeMode: String = UserDefaults.standard.string(forKey: "ghostVolumeMode") ?? "auto"
     
     var body: some View {
         VStack(spacing: 12) {
@@ -228,21 +262,45 @@ struct GhostEffectControls: View {
                 .animation(.easeInOut(duration: 0.3), value: selectedGhostButton)
                 .disabled(AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front) == nil)
                 
-                Button("Volume") {
-                    selectedGhostButton = "Volume"
-                    UserDefaults.standard.set("Volume", forKey: "selectedGhostButton")
-                    NotificationCenter.default.post(name: .ghostEffectChanged, object: "Volume")
-                    print("Volume button tapped - Volume effect selected")
+                VStack(spacing: 4) {
+                    Button("Volume") {
+                        selectedGhostButton = "Volume"
+                        UserDefaults.standard.set("Volume", forKey: "selectedGhostButton")
+                        NotificationCenter.default.post(name: .ghostEffectChanged, object: "Volume")
+                        print("Volume button tapped - Volume effect selected")
+                    }
+                    .font(.system(size: selectedGhostButton == "Volume" ? 15 : 13, weight: .medium))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, selectedGhostButton == "Volume" ? 18 : 14)
+                    .padding(.vertical, selectedGhostButton == "Volume" ? 9 : 7)
+                    .background(selectedGhostButton == "Volume" ? Color.green : Color.green.opacity(0.6))
+                    .cornerRadius(12)
+                    .scaleEffect(selectedGhostButton == "Volume" ? 1.08 : 0.95)
+                    .animation(.easeInOut(duration: 0.3), value: selectedGhostButton)
+                    if selectedGhostButton == "Volume" {
+                        HStack {
+                            Text("Manual")
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundColor(.primary)
+                            Spacer(minLength: 12)
+                            Toggle("", isOn: Binding<Bool>(
+                                get: { ghostVolumeMode == "manual" },
+                                set: { isManual in
+                                    ghostVolumeMode = isManual ? "manual" : "auto"
+                                    UserDefaults.standard.set(ghostVolumeMode, forKey: "ghostVolumeMode")
+                                })
+                            )
+                            .labelsHidden()
+                            .toggleStyle(GhostVolumeModeToggleStyle())
+                            Spacer(minLength: 12)
+                            Text("Auto")
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundColor(.primary)
+                        }
+                        .padding(.top, 4)
+                        .padding(.horizontal, 0)
+                    }
                 }
-                .font(.system(size: selectedGhostButton == "Volume" ? 15 : 13, weight: .medium))
-                .foregroundColor(.white)
-                .padding(.horizontal, selectedGhostButton == "Volume" ? 18 : 14)
-                .padding(.vertical, selectedGhostButton == "Volume" ? 9 : 7)
-                .background(selectedGhostButton == "Volume" ? Color.green : Color.green.opacity(0.6))
-                .cornerRadius(12)
-                .scaleEffect(selectedGhostButton == "Volume" ? 1.08 : 0.95)
-                .animation(.easeInOut(duration: 0.3), value: selectedGhostButton)
-                
                 Button("Emergency") {
                     selectedGhostButton = "Emergency"
                     UserDefaults.standard.set("Emergency", forKey: "selectedGhostButton")
@@ -351,8 +409,10 @@ struct ModsSection: View {
                                     )
                                 }
                                 
-                // Ghost Effect controls
-                GhostEffectControls(selectedGhostButton: $selectedGhostButton)
+                // Ghost Effect controls - показывается только когда включен тумблер
+                if autoEmergencyModeEnabled {
+                    GhostEffectControls(selectedGhostButton: $selectedGhostButton)
+                }
             }
         }
         .padding(.vertical, 12)
@@ -368,116 +428,71 @@ struct APISection: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Inject API")
-                .font(.headline)
-                .foregroundColor(.primary)
-                .padding(.horizontal, 20)
+            HStack {
+                Text("Inject API")
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                
+                Spacer()
+                
+                // Auto Monitor Toggle рядом с заголовком
+                Toggle("", isOn: $apiService.isMonitoring)
+                    .labelsHidden()
+                    .onChange(of: apiService.isMonitoring) { oldValue, newValue in
+                        if newValue {
+                            apiService.startMonitoring()
+                        } else {
+                            apiService.stopMonitoring()
+                        }
+                        UserDefaults.standard.set(newValue, forKey: "autoMonitorEnabled")
+                    }
+            }
+            .padding(.horizontal, 20)
             
-                                VStack(spacing: 12) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Auto Monitor")
-                            .font(.body)
-                        Text("Automatically sync password with server")
+            if apiService.isMonitoring {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("User ID")
                             .font(.caption)
                             .foregroundColor(.gray)
+                        Spacer()
+                        
+                        TextField("Enter User ID", text: $apiService.userID)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .frame(width: 120)
                     }
-                    Spacer()
-                    Toggle("", isOn: $apiService.isMonitoring)
-                        .labelsHidden()
-                        .onChange(of: apiService.isMonitoring) { oldValue, newValue in
-                            if newValue {
-                                apiService.startMonitoring()
-                            } else {
-                                apiService.stopMonitoring()
-                            }
-                            UserDefaults.standard.set(newValue, forKey: "autoMonitorEnabled")
-                        }
+                    
+                    HStack {
+                        Text("Last Update")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                        Text(apiService.lastFetchTime != nil ? timeFormatter.string(from: apiService.lastFetchTime!) : "Never")
+                            .font(.caption)
+                            .foregroundColor(.blue)
+                        
+                        Spacer()
+                        
+                        Text("Status")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                        Text(apiService.isLoading ? "Loading..." : "Ready")
+                            .font(.caption)
+                            .foregroundColor(apiService.isLoading ? .orange : .green)
+                    }
                 }
                 .padding(.horizontal, 20)
-                .padding(.vertical, 16)
+                .padding(.vertical, 12)
                 .background(
-                    RoundedRectangle(cornerRadius: 16)
+                    RoundedRectangle(cornerRadius: 12)
                         .fill(Color(.systemGray6))
-                        .shadow(color: Color.white.opacity(0.9), radius: 6, x: -3, y: -3)
-                        .shadow(color: Color.black.opacity(0.15), radius: 6, x: 3, y: 3)
+                        .shadow(color: Color.white.opacity(0.9), radius: 4, x: -2, y: -2)
+                        .shadow(color: Color.black.opacity(0.15), radius: 4, x: 2, y: 2)
                 )
-                
-                if apiService.isMonitoring {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("User ID")
-                                        .font(.caption)
-                                        .foregroundColor(.gray)
-                            Spacer()
-                            
-                            // Instant Catch Button (ещё больше с полным текстом)
-                            Button(action: {
-                                apiService.instantCatch { password in
-                                    if let password = password {
-                                        UserDefaults.standard.set(password, forKey: "userPassword")
-                                        NotificationCenter.default.post(name: .passwordUpdatedFromAPI, object: password)
-                                        // Мгновенно устанавливаем пароль в Set Passcode
-                                        DispatchQueue.main.async {
-                                            tempPassword = password
-                                        }
-                                    }
-                                }
-                            }) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "bolt.fill")
-                                        .font(.system(size: 14, weight: .medium))
-                                        .foregroundColor(.white)
-                                    Text("Instant Catch")
-                                        .font(.system(size: 13, weight: .medium))
-                                        .foregroundColor(.white)
-                                }
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(Color.orange)
-                                .cornerRadius(10)
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                            
-                            TextField("Enter User ID", text: $apiService.userID)
-                                .textFieldStyle(RoundedBorderTextFieldStyle())
-                                .frame(width: 120)
-                        }
-                        
-                        HStack {
-                            Text("Last Update")
-                                .font(.caption)
-                                .foregroundColor(.gray)
-                            Spacer()
-                            Text(apiService.lastFetchTime != nil ? timeFormatter.string(from: apiService.lastFetchTime!) : "Never")
-                                .font(.caption)
-                                .foregroundColor(.blue)
-                        }
-                        
-                        HStack {
-                            Text("Status")
-                                .font(.caption)
-                                .foregroundColor(.gray)
-                            Spacer()
-                            Text(apiService.isLoading ? "Loading..." : "Ready")
-                                .font(.caption)
-                                .foregroundColor(apiService.isLoading ? .orange : .green)
-                        }
-                                }
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 12)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .fill(Color(.systemGray6))
-                                        .shadow(color: Color.white.opacity(0.9), radius: 4, x: -2, y: -2)
-                                        .shadow(color: Color.black.opacity(0.15), radius: 4, x: 2, y: 2)
-                                )
-                }
-                            }
-                        }
-                        .padding(.vertical, 12)
-                        .neumorphic()
-                        .padding(.horizontal, 16)
+            }
+        }
+        .padding(.vertical, 12)
+        .neumorphic()
+        .padding(.horizontal, 16)
     }
 }
 
@@ -802,7 +817,7 @@ struct SecretMenuView: View {
                         PasscodeLengthSection(tempLength: $tempLength)
                         
                         // Password setup section
-                        PasswordSetupSection(tempPassword: $tempPassword, showingPasswordInput: $showingPasswordInput)
+                        PasswordSetupSection(tempPassword: $tempPassword, showingPasswordInput: $showingPasswordInput, apiService: apiService)
                         
                         // Copy Clipboard toggle
                         CopyClipboardToggle()
@@ -896,6 +911,26 @@ struct SecretMenuView: View {
         passcodeSetSuccess = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             passcodeSetSuccess = false
+        }
+    }
+}
+
+struct GhostVolumeModeToggleStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack {
+            configuration.label
+            Spacer()
+            ZStack {
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(configuration.isOn ? Color.green : Color.blue)
+                    .frame(width: 48, height: 28)
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: 24, height: 24)
+                    .offset(x: configuration.isOn ? 10 : -10)
+                    .shadow(radius: 1)
+            }
+            .onTapGesture { configuration.isOn.toggle() }
         }
     }
 }

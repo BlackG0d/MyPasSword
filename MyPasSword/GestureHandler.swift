@@ -189,6 +189,28 @@ class GestureHandler: NSObject, ObservableObject {
                         }
                     }
                 }
+                // Новая логика: поддержка пяти пальцев
+                else if fingerCount == 5 {
+                    detected = true
+                    if !self.gestureActive {
+                        self.gestureActive = true
+                        self.gestureStartTime = Date()
+                        print("Five finger gesture started - holding for \(self.requiredHoldDuration)s")
+                    } else if let start = self.gestureStartTime {
+                        let elapsed = Date().timeIntervalSince(start)
+                        print("Five finger holding: \(String(format: "%.1f", elapsed))s / \(self.requiredHoldDuration)s")
+                        if elapsed >= self.requiredHoldDuration {
+                            self.gestureActive = false
+                            self.gestureStartTime = nil
+                            self.gestureTriggered = true // Отмечаем, что жест сработал
+                            print("Five finger gesture detected! Activating Ghost Effect")
+                            DispatchQueue.main.async {
+                                self.onIndexFingerDetected?()
+                            }
+                            break
+                        }
+                    }
+                }
             }
             
             if !detected {

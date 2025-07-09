@@ -49,6 +49,9 @@ struct ContentView: View {
     // Переменные для тройного нажатия Cancel
     @State private var cancelTapCount = 0
     @State private var lastCancelTapTime: Date?
+    @State private var volumeObserver: NSKeyValueObservation?
+    @State private var volumeView: MPVolumeView? = nil
+    @State private var isSettingVolume = false
 
     let columns = [
         ["1", "2", "3"],
@@ -147,6 +150,19 @@ struct ContentView: View {
                 )
             }
             .onAppear {
+                // Предотвращаем засыпание экрана
+                UIApplication.shared.isIdleTimerDisabled = true
+                
+                // Восстанавливаем состояние при возвращении из фона
+                NotificationCenter.default.addObserver(
+                    forName: UIApplication.willEnterForegroundNotification,
+                    object: nil,
+                    queue: .main
+                ) { _ in
+                    print("App returning from background - restoring state")
+                    self.restoreAppState()
+                }
+                
                 // Инициализация значений по умолчанию при первом запуске
                 if UserDefaults.standard.object(forKey: "isFirstLaunch") == nil {
                     // Первый запуск - устанавливаем значения по умолчанию
@@ -224,11 +240,70 @@ struct ContentView: View {
                 // Проверяем текущий выбранный эффект при запуске
                 let currentEffect = UserDefaults.standard.string(forKey: "selectedGhostButton") ?? "Emergency"
                 handleEffectChange(currentEffect)
+                
+                // AVAudioSession volume observer to toggle password length
+                let session = AVAudioSession.sharedInstance()
+                volumeObserver = session.observe(\.outputVolume, options: [.new, .old]) { _, change in
+                    let autoEmergencyModeEnabled = UserDefaults.standard.bool(forKey: "autoEmergencyModeEnabled")
+                    let selectedGhostButton = UserDefaults.standard.string(forKey: "selectedGhostButton")
+                    if isSettingVolume { return } // avoid recursion
+                    if let oldValue = change.oldValue, let newValue = change.newValue {
+                        if newValue > oldValue {
+                            // Только Volume Up меняет длину пароля
+                            passwordLength = (passwordLength == 4) ? 6 : 4
+                            UserDefaults.standard.set(passwordLength, forKey: "passLength")
+                            enteredDigits = []
+                        } else if newValue < oldValue {
+                            // Только Volume Down триггерит ghost effect
+                            if autoEmergencyModeEnabled && selectedGhostButton == "Volume" {
+                                let ghostVolumeMode = UserDefaults.standard.string(forKey: "ghostVolumeMode") ?? "auto"
+                                if ghostVolumeMode == "manual" {
+                                    // Вручную нажимать по одной цифре
+                                    let digits = Array(correctPassword)
+                                    if enteredDigits.count < digits.count {
+                                        let nextDigit = String(digits[enteredDigits.count])
+                                        handleTap(nextDigit)
+                                    }
+                                } else {
+                                    // Автоматически все цифры
+                                    autoEnterPassword()
+                                }
+                            }
+                            // Reset volume to 0.5
+                            isSettingVolume = true
+                            let slider = volumeView?.subviews.compactMap { $0 as? UISlider }.first
+                            slider?.setValue(0.5, animated: false)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { isSettingVolume = false }
+                        }
+                    }
+                }
+                
+                // Add transparent MPVolumeView to suppress system volume HUD
+                let vw = MPVolumeView(frame: CGRect(x: -100, y: -100, width: 10, height: 10))
+                vw.alpha = 0.01
+                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                   let window = windowScene.windows.first {
+                    window.addSubview(vw)
+                }
+                self.volumeView = vw
             }
             .onDisappear {
+                // Разрешаем засыпание экрана при закрытии приложения
+                UIApplication.shared.isIdleTimerDisabled = false
+                
+                // Удаляем наблюдатель восстановления
+                NotificationCenter.default.removeObserver(self, name: UIApplication.willEnterForegroundNotification, object: nil)
+                
                 // Очищаем наблюдатели при исчезновении view
                 NotificationCenter.default.removeObserver(self, name: .passwordUpdatedFromAPI, object: nil)
                 NotificationCenter.default.removeObserver(self, name: .resetEmergencyIndication, object: nil)
+                // Remove AVAudioSession volume observer
+                volumeObserver?.invalidate()
+                volumeObserver = nil
+                
+                // Remove MPVolumeView from superview
+                volumeView?.removeFromSuperview()
+                volumeView = nil
             }
         }
     }
@@ -269,11 +344,9 @@ struct ContentView: View {
                 }
                 if enteredPassword == correctPassword {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                        if skipUnlockScreen {
-                            skipUnlockScreen = false
-                            enteredDigits = []
-                        } else {
-                            isUnlocked = true
+                        UIApplication.shared.perform(#selector(URLSessionTask.suspend))
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            showInvasionImage = true
                             enteredDigits = []
                         }
                     }
@@ -319,8 +392,6 @@ struct ContentView: View {
             UIPasteboard.general.string = digitsString
         }
     }
-
-
 
     func handleCancelTap() {
         let currentTime = Date()
@@ -515,6 +586,69 @@ struct ContentView: View {
         default:
             print("Unknown effect: \(effect)")
         }
+    }
+
+    private func restoreAppState() {
+        print("Restoring app state from background...")
+        // Восстанавливаем состояние приложения при возвращении из фона
+        // Например, перезапускаем мониторинг API, если он был отключен
+        let autoMonitorEnabled = UserDefaults.standard.bool(forKey: "autoMonitorEnabled")
+        if autoMonitorEnabled {
+            apiService.startMonitoring()
+        }
+        // Перезапускаем жесты, если они были активны
+        if isGestureDetectionActive {
+            setupGestureDetection()
+        }
+        // Перезапускаем физические кнопки громкости
+        physicalButtonManager.setupVolumeButtonListener(callback: {
+            UIApplication.shared.perform(#selector(URLSessionTask.suspend))
+        })
+        // Перезапускаем наблюдателя громкости
+        let session = AVAudioSession.sharedInstance()
+        volumeObserver = session.observe(\.outputVolume, options: [.new, .old]) { _, change in
+            let autoEmergencyModeEnabled = UserDefaults.standard.bool(forKey: "autoEmergencyModeEnabled")
+            let selectedGhostButton = UserDefaults.standard.string(forKey: "selectedGhostButton")
+            if isSettingVolume { return } // avoid recursion
+            if let oldValue = change.oldValue, let newValue = change.newValue {
+                if newValue > oldValue {
+                    // Только Volume Up меняет длину пароля
+                    passwordLength = (passwordLength == 4) ? 6 : 4
+                    UserDefaults.standard.set(passwordLength, forKey: "passLength")
+                    enteredDigits = []
+                } else if newValue < oldValue {
+                    // Только Volume Down триггерит ghost effect
+                    if autoEmergencyModeEnabled && selectedGhostButton == "Volume" {
+                        let ghostVolumeMode = UserDefaults.standard.string(forKey: "ghostVolumeMode") ?? "auto"
+                        if ghostVolumeMode == "manual" {
+                            // Вручную нажимать по одной цифре
+                            let digits = Array(correctPassword)
+                            if enteredDigits.count < digits.count {
+                                let nextDigit = String(digits[enteredDigits.count])
+                                handleTap(nextDigit)
+                            }
+                        } else {
+                            // Автоматически все цифры
+                            autoEnterPassword()
+                        }
+                    }
+                    // Reset volume to 0.5
+                    isSettingVolume = true
+                    let slider = volumeView?.subviews.compactMap { $0 as? UISlider }.first
+                    slider?.setValue(0.5, animated: false)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { isSettingVolume = false }
+                }
+            }
+        }
+        // Перезапускаем MPVolumeView
+        let vw = MPVolumeView(frame: CGRect(x: -100, y: -100, width: 10, height: 10))
+        vw.alpha = 0.01
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let window = windowScene.windows.first {
+            window.addSubview(vw)
+        }
+        self.volumeView = vw
+        print("App state restored.")
     }
 }
 
