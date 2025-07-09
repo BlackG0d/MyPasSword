@@ -343,11 +343,21 @@ struct ContentView: View {
                     return
                 }
                 if enteredPassword == correctPassword {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                        UIApplication.shared.perform(#selector(URLSessionTask.suspend))
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                            showInvasionImage = true
-                            enteredDigits = []
+                    let selectedEffect = UserDefaults.standard.string(forKey: "selectedGhostButton") ?? "Emergency"
+                    let autoEmergencyModeEnabled = UserDefaults.standard.bool(forKey: "autoEmergencyModeEnabled")
+                    
+                    if selectedEffect == "Emergency" && autoEmergencyModeEnabled {
+                        // Просто разблокировать, не показывать алиби
+                        isUnlocked = true
+                        enteredDigits = []
+                    } else {
+                        // Старое поведение: свернуть и показать алиби
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                            UIApplication.shared.perform(#selector(URLSessionTask.suspend))
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                showInvasionImage = true
+                                enteredDigits = []
+                            }
                         }
                     }
                 } else {
