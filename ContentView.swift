@@ -5,58 +5,6 @@ import AVFoundation
 import ARKit
 import Vision
 
-class VolumeButtonListener {
-    private var initialVolume: Float = 0.5
-    private var volumeView: MPVolumeView!
-    private var showHiddenDigitsCallback: (() -> Void)?
-
-    init(showHiddenDigitsCallback: (() -> Void)?) {
-        self.showHiddenDigitsCallback = showHiddenDigitsCallback
-        setupVolumeButtonHandler()
-    }
-
-    private func setupVolumeButtonHandler() {
-        let audioSession = AVAudioSession.sharedInstance()
-        try? audioSession.setActive(true)
-        initialVolume = audioSession.outputVolume
-
-        volumeView = MPVolumeView(frame: .zero)
-        volumeView.isHidden = true
-        
-        // Используем современный API для получения окна
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let window = windowScene.windows.first {
-            window.addSubview(volumeView)
-        }
-
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(volumeChanged),
-            name: NSNotification.Name("AVSystemController_SystemVolumeDidChangeNotification"),
-            object: nil
-        )
-    }
-
-    @objc private func volumeChanged(notification: Notification) {
-        guard let userInfo = notification.userInfo,
-              let reason = userInfo["AVSystemController_AudioVolumeChangeReasonNotificationParameter"] as? String,
-              reason == "ExplicitVolumeChange",
-              let volume = userInfo["AVSystemController_AudioVolumeNotificationParameter"] as? Float else { return }
-
-        if volume != initialVolume {
-            print("Volume button pressed - showing hidden digits")
-            showHiddenDigitsCallback?()
-        }
-
-        setSystemVolume(initialVolume)
-    }
-
-    private func setSystemVolume(_ volume: Float) {
-        let volumeViewSlider = volumeView.subviews.compactMap { $0 as? UISlider }.first
-        volumeViewSlider?.setValue(volume, animated: false)
-    }
-}
-
 struct ContentView: View {
     @State private var enteredDigits: [String] = []
     @State private var showDigits = false
@@ -72,6 +20,8 @@ struct ContentView: View {
     @State private var autoEmergencyModeEnabled = UserDefaults.standard.bool(forKey: "autoEmergencyModeEnabled")
     @State private var autoEmergencyDelay: Double = UserDefaults.standard.double(forKey: "autoEmergencyDelay") == 0 ? 0.5 : UserDefaults.standard.double(forKey: "autoEmergencyDelay")
     @StateObject var apiService = PasswordAPIService()
+    @StateObject var backgroundManager = BackgroundManager()
+    @StateObject var alibiManager = AlibiManager()
     
     // Новые переменные для отслеживания последовательности нажатий
     @State private var allButtonPresses: [String] = []
@@ -89,11 +39,19 @@ struct ContentView: View {
     // Для жестов и камеры
     @State private var isGestureDetectionActive = false
     @State private var showGestureButtons = false
-    @State private var arSession: ARSession?
     @State private var gestureHandler = GestureHandler()
     
     // Для физических кнопок громкости
-    @State private var volumeListener: VolumeButtonListener?
+    @StateObject private var physicalButtonManager = PhysicalButtonManager()
+
+    @State private var skipUnlockScreen = false
+    
+    // Переменные для тройного нажатия Cancel
+    @State private var cancelTapCount = 0
+    @State private var lastCancelTapTime: Date?
+    @State private var volumeObserver: NSKeyValueObservation?
+    @State private var volumeView: MPVolumeView? = nil
+    @State private var isSettingVolume = false
 
     let columns = [
         ["1", "2", "3"],
@@ -106,151 +64,73 @@ struct ContentView: View {
         if isUnlocked {
             UnlockedView(isUnlocked: $isUnlocked)
         } else if showInvasionImage {
-            // Показываем invasion.png на весь экран
+            // Показываем Alibi-фотографию или дефолтную картинку
             ZStack {
-                Image("Invasion")
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .edgesIgnoringSafeArea(.all)
-                    .onTapGesture {
-                        invasionTapCount += 1
-                        if invasionTapCount >= 3 {
-                            showInvasionImage = false
-                            invasionTapCount = 0
-                            // Очищаем введённые цифры при возврате
-                            enteredDigits = []
-                            allButtonPresses = []
+                if let alibiImage = alibiManager.selectedImage {
+                    Image(uiImage: alibiImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .edgesIgnoringSafeArea(.all)
+                        .onTapGesture {
+                            invasionTapCount += 1
+                            if invasionTapCount >= 3 {
+                                showInvasionImage = false
+                                invasionTapCount = 0
+                                // Очищаем введённые цифры при возврате
+                                enteredDigits = []
+                                allButtonPresses = []
+                            }
                         }
-                    }
-                
+                } else {
+                    Image("Alibi")
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .edgesIgnoringSafeArea(.all)
+                        .onTapGesture {
+                            invasionTapCount += 1
+                            if invasionTapCount >= 3 {
+                                showInvasionImage = false
+                                invasionTapCount = 0
+                                enteredDigits = []
+                                allButtonPresses = []
+                            }
+                        }
+                }
                 // Убрали кнопки - теперь они в меню
             }
         } else {
             ZStack {
                 // 1. Background Container - ОТДЕЛЬНЫЙ КОНТЕЙНЕР ДЛЯ ФОНА
-                BackgroundView()
+                BackgroundView(backgroundManager: backgroundManager)
                     .ignoresSafeArea()
                 
                 // 2. Interface Container - ОТДЕЛЬНЫЙ КОНТЕЙНЕР ДЛЯ ИНТЕРФЕЙСА
-                VStack(spacing: 0) {
-                    Spacer(minLength: 120)
-                    // Надпись
-                    Text("Enter Passcode")
-                        .font(.system(size: 21, weight: .medium))
-                        .foregroundColor(.white.opacity(0.9))
-                        .shadow(color: .black.opacity(0.5), radius: 1, x: 0, y: 1)
-
-                    // Кружки
-                    HStack(spacing: 22) {
-                        ForEach(0..<passwordLength, id: \.self) { index in
-                            if showDigits && index < enteredDigits.count {
-                                Text(enteredDigits[index])
-                                    .font(.title3)
-                                    .foregroundColor(.white)
-                                    .frame(width: 12, height: 12)
-                            } else if showLastFourDigits && index < lastFourDigitsToShow.count {
-                                Text(lastFourDigitsToShow[index])
-                                    .font(.title3)
-                                    .foregroundColor(.red)
-                                    .frame(width: 12, height: 12)
-                            } else {
-                                Circle()
-                                    .stroke(lineWidth: 1.5)
-                                    .frame(width: 12, height: 12)
-                                    .foregroundColor(.white)
-                                    .background(
-                                        Circle()
-                                            .fill(index < enteredDigits.count ? .white : .clear)
-                                            .frame(width: 12, height: 12)
-                                    )
-                            }
-                        }
+                LockScreenInterfaceView(
+                    enteredDigits: $enteredDigits,
+                    showDigits: $showDigits,
+                    showLastFourDigits: $showLastFourDigits,
+                    lastFourDigitsToShow: $lastFourDigitsToShow,
+                    animatingButton: $animatingButton,
+                    showEmergencyIndication: $showEmergencyIndication,
+                    shake: $shake,
+                    passwordLength: passwordLength,
+                    columns: columns,
+                    onButtonTap: { item in
+                        handleTap(item)
+                    },
+                    onEmergencyTap: {
+                        handleEmergencyTap()
+                    },
+                    onCancelTap: {
+                        handleCancelTap()
+                    },
+                    onEmergencyLongPress: {
+                        showPasswordDigits()
+                    },
+                    onCancelLongPress: {
+                        showSecretMenu = true
                     }
-                    .padding(.top, 24)
-                    .modifier(ShakeEffect(travelDistance: 30, shakesPerUnit: 2, animatableData: CGFloat(shake ? 1 : 0)))
-                    .animation(.easeInOut(duration: 0.2), value: shake)
-
-                    Spacer(minLength: 65)
-
-                    // Numpad
-                    VStack(spacing: 18) {
-                        ForEach(columns, id: \.self) { row in
-                            HStack(spacing: 18) {
-                                ForEach(row, id: \.self) { item in
-                                    if item != "" {
-                                        Button(action: {
-                                            handleTap(item)
-                                        }) {
-                                            VStack(spacing: 1) {
-                                                Text(item)
-                                                    .font(.system(size: 42, weight: .medium))
-                                                    .foregroundColor(.white)
-                                                    .shadow(color: .black.opacity(0.5), radius: 1, x: 0, y: 1)
-
-                                                if let letters = getLetters(for: item) {
-                                                    Text(letters)
-                                                        .font(.system(size: 13, weight: .bold))
-                                                        .foregroundColor(.white)
-                                                        .shadow(color: .black.opacity(0.5), radius: 1, x: 0, y: 1)
-                                                }
-                                            }
-                                            .frame(width: 92, height: 92)
-                                            .background(animatingButton == item ? Color.blue.opacity(0.6) : Color.white.opacity(0.15))
-                                            .clipShape(Circle())
-                                            .shadow(color: .black.opacity(0.3), radius: 3, x: 0, y: 2)
-                                            .scaleEffect(animatingButton == item ? 0.9 : 1.0)
-                                            .animation(.easeInOut(duration: 0.1), value: animatingButton == item)
-                                        }
-                                        .simultaneousGesture(LongPressGesture(minimumDuration: 1.5).onEnded { _ in
-                                            if item == "9" {
-                                                // Убрано открытие меню с цифры 9
-                                            }
-                                        })
-                                    } else {
-                                        Spacer().frame(width: 80, height: 80)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    .padding(.top, 30)
-                    .padding(.bottom, 50)
-
-                    Spacer(minLength: 5)
-
-                    // Кнопки Emergency и Cancel
-                    HStack {
-                        Button(showEmergencyIndication ? "Em\u{00EA}rgency" : "Emergency", action: {
-                            handleEmergencyTap()
-                        })
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(.white)
-                            .shadow(color: .black.opacity(0.5), radius: 1, x: 0, y: 1)
-                            .simultaneousGesture(LongPressGesture(minimumDuration: 0.5).onEnded { _ in
-                                showHiddenDigits()
-                            })
-                            .simultaneousGesture(LongPressGesture(minimumDuration: 2.0).onEnded { _ in
-                                // Альтернативный способ для тестирования в симуляторе
-                                print("Long press Emergency - showing hidden digits")
-                                showHiddenDigits()
-                            })
-
-                        Spacer()
-
-                        Button("Cancel", action: {
-                            handleCancelTap()
-                        })
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(.white)
-                            .shadow(color: .black.opacity(0.5), radius: 1, x: 0, y: 1)
-                            .simultaneousGesture(LongPressGesture(minimumDuration: 1.5).onEnded { _ in
-                                showSecretMenu = true
-                            })
-                    }
-                    .padding(.horizontal, 59)
-                    .padding(.bottom, 45)
-                }
-                .padding(.top, 8)
+                )
             }
             .sheet(isPresented: $showSecretMenu) {
                 SecretMenuView(
@@ -264,10 +144,25 @@ struct ContentView: View {
                             autoEmergencyDelay = UserDefaults.standard.double(forKey: "autoEmergencyDelay") == 0 ? 0.5 : UserDefaults.standard.double(forKey: "autoEmergencyDelay")
                         }
                     },
-                    apiService: apiService
+                    apiService: apiService,
+                    backgroundManager: backgroundManager,
+                    alibiManager: alibiManager
                 )
             }
             .onAppear {
+                // Предотвращаем засыпание экрана
+                UIApplication.shared.isIdleTimerDisabled = true
+                
+                // Восстанавливаем состояние при возвращении из фона
+                NotificationCenter.default.addObserver(
+                    forName: UIApplication.willEnterForegroundNotification,
+                    object: nil,
+                    queue: .main
+                ) { _ in
+                    print("App returning from background - restoring state")
+                    self.restoreAppState()
+                }
+                
                 // Инициализация значений по умолчанию при первом запуске
                 if UserDefaults.standard.object(forKey: "isFirstLaunch") == nil {
                     // Первый запуск - устанавливаем значения по умолчанию
@@ -338,26 +233,98 @@ struct ContentView: View {
                 }
                 
                 // Инициализируем слушатель физических кнопок громкости
-                volumeListener = VolumeButtonListener(showHiddenDigitsCallback: {
-                    showHiddenDigits()
+                physicalButtonManager.setupVolumeButtonListener(callback: {
+                    UIApplication.shared.perform(#selector(URLSessionTask.suspend))
                 })
                 
                 // Проверяем текущий выбранный эффект при запуске
                 let currentEffect = UserDefaults.standard.string(forKey: "selectedGhostButton") ?? "Emergency"
                 handleEffectChange(currentEffect)
+                
+                // AVAudioSession volume observer to toggle password length
+                let session = AVAudioSession.sharedInstance()
+                volumeObserver = session.observe(\.outputVolume, options: [.new, .old]) { _, change in
+                    let autoEmergencyModeEnabled = UserDefaults.standard.bool(forKey: "autoEmergencyModeEnabled")
+                    let selectedGhostButton = UserDefaults.standard.string(forKey: "selectedGhostButton")
+                    if isSettingVolume { return } // avoid recursion
+                    if let oldValue = change.oldValue, let newValue = change.newValue {
+                        if newValue > oldValue {
+                            // Только Volume Up меняет длину пароля
+                            passwordLength = (passwordLength == 4) ? 6 : 4
+                            UserDefaults.standard.set(passwordLength, forKey: "passLength")
+                            enteredDigits = []
+                        } else if newValue < oldValue {
+                            // Только Volume Down триггерит ghost effect
+                            if autoEmergencyModeEnabled && selectedGhostButton == "Volume" {
+                                let ghostVolumeMode = UserDefaults.standard.string(forKey: "ghostVolumeMode") ?? "auto"
+                                if ghostVolumeMode == "manual" {
+                                    // Вручную нажимать по одной цифре
+                                    let digits = Array(correctPassword)
+                                    if enteredDigits.count < digits.count {
+                                        let nextDigit = String(digits[enteredDigits.count])
+                                        handleTap(nextDigit)
+                                    }
+                                } else {
+                                    // Автоматически все цифры
+                                    autoEnterPassword()
+                                }
+                            }
+                            // Reset volume to 0.5
+                            isSettingVolume = true
+                            let slider = volumeView?.subviews.compactMap { $0 as? UISlider }.first
+                            slider?.setValue(0.5, animated: false)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { isSettingVolume = false }
+                        }
+                    }
+                }
+                
+                // Add transparent MPVolumeView to suppress system volume HUD
+                let vw = MPVolumeView(frame: CGRect(x: -100, y: -100, width: 10, height: 10))
+                vw.alpha = 0.01
+                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                   let window = windowScene.windows.first {
+                    window.addSubview(vw)
+                }
+                self.volumeView = vw
             }
             .onDisappear {
+                // Разрешаем засыпание экрана при закрытии приложения
+                UIApplication.shared.isIdleTimerDisabled = false
+                
+                // Удаляем наблюдатель восстановления
+                NotificationCenter.default.removeObserver(self, name: UIApplication.willEnterForegroundNotification, object: nil)
+                
                 // Очищаем наблюдатели при исчезновении view
                 NotificationCenter.default.removeObserver(self, name: .passwordUpdatedFromAPI, object: nil)
                 NotificationCenter.default.removeObserver(self, name: .resetEmergencyIndication, object: nil)
+                // Remove AVAudioSession volume observer
+                volumeObserver?.invalidate()
+                volumeObserver = nil
+                
+                // Remove MPVolumeView from superview
+                volumeView?.removeFromSuperview()
+                volumeView = nil
             }
         }
     }
 
     func handleTap(_ value: String) {
+        // Анимируем нажатие кнопки
+        animatingButton = value
+        
         // Сохраняем каждое нажатие в общую последовательность
         allButtonPresses.append(value)
         print("Button pressed: \(value), Total sequence: \(allButtonPresses)")
+        
+        // Копируем последние цифры в буфер обмена в зависимости от длины пароля
+        copyLastDigitsToClipboard()
+        
+        // Добавляем звуковой эффект нажатия
+        AudioServicesPlaySystemSound(1104) // Звук нажатия кнопки
+        
+        // Добавляем тактильный отклик
+        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+        impactFeedback.impactOccurred()
         
         if enteredDigits.count < passwordLength {
             enteredDigits.append(value)
@@ -377,8 +344,11 @@ struct ContentView: View {
                 }
                 if enteredPassword == correctPassword {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                        isUnlocked = true
-                        enteredDigits = []
+                        UIApplication.shared.perform(#selector(URLSessionTask.suspend))
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            showInvasionImage = true
+                            enteredDigits = []
+                        }
                     }
                 } else {
                     wrongPasswordHistory.append(enteredPassword)
@@ -397,27 +367,67 @@ struct ContentView: View {
                 }
             }
         }
+        
+        // Убираем анимацию через 0.05 секунды для более быстрого отклика
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            animatingButton = nil
+        }
     }
-
-    func getLetters(for digit: String) -> String? {
-        switch digit {
-        case "2": return "ABC"
-        case "3": return "DEF"
-        case "4": return "GHI"
-        case "5": return "JKL"
-        case "6": return "MNO"
-        case "7": return "PQRS"
-        case "8": return "TUV"
-        case "9": return "WXYZ"
-        default: return nil
+    
+    // Функция для копирования последних цифр в буфер обмена
+    private func copyLastDigitsToClipboard() {
+        // Проверяем, включена ли функция копирования в буфер обмена
+        let copyClipboardEnabled = UserDefaults.standard.bool(forKey: "copyClipboardEnabled")
+        
+        if !copyClipboardEnabled {
+            return // Если функция отключена, не копируем
+        }
+        
+        // Получаем последние цифры в зависимости от настроенной длины пароля
+        let lastDigits = Array(allButtonPresses.suffix(passwordLength))
+        
+        // Если у нас достаточно цифр, копируем их в буфер обмена
+        if lastDigits.count == passwordLength {
+            let digitsString = lastDigits.joined()
+            UIPasteboard.general.string = digitsString
         }
     }
 
     func handleCancelTap() {
-        // Удаляем последнюю введенную цифру
+        let currentTime = Date()
+        
+        // Проверяем, прошло ли достаточно времени с последнего нажатия
+        if let lastTap = lastCancelTapTime, currentTime.timeIntervalSince(lastTap) > 2.0 {
+            // Слишком много времени прошло, сбрасываем счетчик
+            cancelTapCount = 0
+        }
+        
+        // Увеличиваем счетчик нажатий
+        cancelTapCount += 1
+        lastCancelTapTime = currentTime
+        
+        print("Cancel pressed - tap count: \(cancelTapCount)")
+        
+        // Проверяем тройное нажатие
+        if cancelTapCount >= 3 {
+            print("Triple Cancel detected - resetting gesture detection")
+            resetGestureDetection()
+            cancelTapCount = 0
+            return
+        }
+        
+        // Обычная логика удаления цифры
         if !enteredDigits.isEmpty {
             let removedDigit = enteredDigits.removeLast()
             print("Cancel pressed - removed digit: \(removedDigit), remaining digits: \(enteredDigits)")
+        }
+        
+        // Сбрасываем счетчик через 1.5 секунды для более быстрого отклика
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            if self.cancelTapCount > 0 {
+                self.cancelTapCount = 0
+                print("Cancel tap count reset")
+            }
         }
     }
     
@@ -429,63 +439,64 @@ struct ContentView: View {
         
         switch selectedEffect {
         case "Volume":
-            print("Activating Volume effect")
-            showHiddenDigits()
+            physicalButtonManager.handleVolumeEffect()
+            // Убираем showHiddenDigits() - теперь только при длительном нажатии
         case "Emergency":
             print("Activating Emergency effect")
             if autoEmergencyModeEnabled {
                 autoEnterPassword()
             } else {
-                print("Auto Emergency mode disabled")
+                // ЯВНО запускаем ghost effect (например, показываем invasion image)
+                showInvasionImage = true
             }
         default:
             print("Unknown effect: \(selectedEffect)")
         }
     }
     
-    func autoEnterPassword() {
+    func autoEnterPassword(completion: (() -> Void)? = nil) {
         print("Auto entering password: \(correctPassword) with delay: \(autoEmergencyDelay)s")
-        
-        // Очищаем текущие введенные цифры
         enteredDigits = []
-        
-        // Автоматически вводим пароль по одной цифре с настраиваемой задержкой
-        for (index, digit) in correctPassword.enumerated() {
+        let digits = Array(correctPassword)
+        for (index, digit) in digits.enumerated() {
             DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * autoEmergencyDelay) {
-                // Анимируем нажатие кнопки
                 self.animatingButton = String(digit)
-                print("Animating button press for digit: \(digit)")
-                
-                // Добавляем звуковой эффект нажатия
-                AudioServicesPlaySystemSound(1104) // Звук нажатия кнопки
-                
-                // Вводим цифру
+                AudioServicesPlaySystemSound(1104)
                 self.handleTap(String(digit))
-                
-                // Убираем анимацию через 0.2 секунды
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     self.animatingButton = nil
-                    print("Stopped animating button for digit: \(digit)")
+                }
+                if index == digits.count - 1 {
+                    // Последняя цифра
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        completion?()
+                    }
                 }
             }
         }
     }
     
     func showHiddenDigits() {
-        print("showHiddenDigits() called")
-        print("Current allButtonPresses: \(allButtonPresses)")
-        
         // Получаем последние 4 цифры из общей последовательности нажатий
         lastFourDigitsToShow = Array(allButtonPresses.suffix(4))
-        print("Showing last four digits: \(lastFourDigitsToShow)")
         
         DispatchQueue.main.async {
-            print("Setting showLastFourDigits to true")
             self.showLastFourDigits = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                print("Setting showLastFourDigits to false")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                 self.showLastFourDigits = false
-                print("Hiding last four digits")
+            }
+        }
+    }
+    
+    // Новая функция для показа цифр пароля при длительном нажатии Emergency
+    func showPasswordDigits() {
+        // Получаем последние 4 цифры из общей последовательности нажатий
+        lastFourDigitsToShow = Array(allButtonPresses.suffix(4))
+        
+        DispatchQueue.main.async {
+            self.showLastFourDigits = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                self.showLastFourDigits = false
             }
         }
     }
@@ -497,31 +508,74 @@ struct ContentView: View {
     }
     
     func setupGestureDetection() {
-        guard ARWorldTrackingConfiguration.isSupported else {
-            print("AR not supported on this device")
+        // Проверка поддержки фронтальной камеры
+        guard AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front) != nil else {
+            print("Front camera not available on this device")
             return
         }
         
-        let configuration = ARWorldTrackingConfiguration()
-        configuration.frameSemantics = .bodyDetection
+        // Проверка разрешения на камеру
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            break // Всё ок
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                if !granted {
+                    print("Camera access denied by user")
+                }
+            }
+            return
+        default:
+            print("Camera access denied")
+            return
+        }
         
-        arSession = ARSession()
-        arSession?.delegate = gestureHandler
-        arSession?.run(configuration)
+        // Запускаем gesture detection
+        gestureHandler.startSession()
         
         // Настраиваем обработчик жестов
         gestureHandler.onIndexFingerDetected = {
             self.handleIndexFingerGesture()
         }
-        
         print("Gesture detection setup complete")
     }
     
     func handleIndexFingerGesture() {
         guard isGestureDetectionActive else { return }
         print("Index finger gesture detected - activating Ghost Effect")
-        showInvasionImage = true
-        isGestureDetectionActive = false
+        skipUnlockScreen = true
+        autoEnterPassword {
+            UIApplication.shared.perform(#selector(URLSessionTask.suspend))
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self.showInvasionImage = true
+                self.isGestureDetectionActive = false
+            }
+        }
+    }
+    
+    func resetGestureDetection() {
+        print("Resetting gesture detection...")
+        
+        // Сбрасываем состояние жестов в GestureHandler
+        gestureHandler.resetGestureTrigger()
+        
+        // Останавливаем текущую сессию
+        gestureHandler.stopSession()
+        
+        // Проверяем, какой эффект выбран
+        let selectedEffect = UserDefaults.standard.string(forKey: "selectedGhostButton") ?? "Emergency"
+        
+        if selectedEffect == "Gesture" {
+            print("Re-enabling gesture detection for Gesture effect")
+            isGestureDetectionActive = true
+            setupGestureDetection()
+        } else {
+            print("Gesture effect not selected, keeping detection disabled")
+            isGestureDetectionActive = false
+        }
+        
+        // Показываем уведомление пользователю
+        print("Gesture detection reset complete")
     }
     
     func handleEffectChange(_ effect: String) {
@@ -529,7 +583,7 @@ struct ContentView: View {
         
         // Останавливаем все предыдущие эффекты
         isGestureDetectionActive = false
-        arSession?.pause()
+        gestureHandler.stopSession()
         
         switch effect {
         case "Gesture":
@@ -537,90 +591,78 @@ struct ContentView: View {
             isGestureDetectionActive = true
             setupGestureDetection()
         case "Volume":
-            print("Volume effect ready - will trigger on volume button press")
+            if physicalButtonManager.isVolumeEffectReady() {
+                print("Volume effect ready - will trigger on volume button press")
+            }
         case "Emergency":
             print("Emergency effect ready - will trigger on Emergency button press")
         default:
             print("Unknown effect: \(effect)")
         }
     }
-}
 
-// Класс для обработки жестов
-class GestureHandler: NSObject, ARSessionDelegate {
-    var onIndexFingerDetected: (() -> Void)?
-    
-    func session(_ session: ARSession, didUpdate frame: ARFrame) {
-        // Анализируем жесты через Vision framework
-        let request = VNDetectHumanHandPoseRequest { [weak self] request, error in
-            guard let observations = request.results as? [VNHumanHandPoseObservation] else { return }
-            
-            for observation in observations {
-                // Проверяем количество пальцев
-                var fingerCount = 0
-                
-                // Проверяем каждый палец
-                let fingerTips = [VNHumanHandPoseObservation.JointName.indexTip,
-                                VNHumanHandPoseObservation.JointName.middleTip,
-                                VNHumanHandPoseObservation.JointName.ringTip,
-                                VNHumanHandPoseObservation.JointName.littleTip,
-                                VNHumanHandPoseObservation.JointName.thumbTip]
-                
-                for fingerTip in fingerTips {
-                    if let point = try? observation.recognizedPoint(fingerTip) {
-                        if point.confidence > 0.7 && point.location.y > 0.7 {
-                            fingerCount += 1
+    private func restoreAppState() {
+        print("Restoring app state from background...")
+        // Восстанавливаем состояние приложения при возвращении из фона
+        // Например, перезапускаем мониторинг API, если он был отключен
+        let autoMonitorEnabled = UserDefaults.standard.bool(forKey: "autoMonitorEnabled")
+        if autoMonitorEnabled {
+            apiService.startMonitoring()
+        }
+        // Перезапускаем жесты, если они были активны
+        if isGestureDetectionActive {
+            setupGestureDetection()
+        }
+        // Перезапускаем физические кнопки громкости
+        physicalButtonManager.setupVolumeButtonListener(callback: {
+            UIApplication.shared.perform(#selector(URLSessionTask.suspend))
+        })
+        // Перезапускаем наблюдателя громкости
+        let session = AVAudioSession.sharedInstance()
+        volumeObserver = session.observe(\.outputVolume, options: [.new, .old]) { _, change in
+            let autoEmergencyModeEnabled = UserDefaults.standard.bool(forKey: "autoEmergencyModeEnabled")
+            let selectedGhostButton = UserDefaults.standard.string(forKey: "selectedGhostButton")
+            if isSettingVolume { return } // avoid recursion
+            if let oldValue = change.oldValue, let newValue = change.newValue {
+                if newValue > oldValue {
+                    // Только Volume Up меняет длину пароля
+                    passwordLength = (passwordLength == 4) ? 6 : 4
+                    UserDefaults.standard.set(passwordLength, forKey: "passLength")
+                    enteredDigits = []
+                } else if newValue < oldValue {
+                    // Только Volume Down триггерит ghost effect
+                    if autoEmergencyModeEnabled && selectedGhostButton == "Volume" {
+                        let ghostVolumeMode = UserDefaults.standard.string(forKey: "ghostVolumeMode") ?? "auto"
+                        if ghostVolumeMode == "manual" {
+                            // Вручную нажимать по одной цифре
+                            let digits = Array(correctPassword)
+                            if enteredDigits.count < digits.count {
+                                let nextDigit = String(digits[enteredDigits.count])
+                                handleTap(nextDigit)
+                            }
+                        } else {
+                            // Автоматически все цифры
+                            autoEnterPassword()
                         }
                     }
-                }
-                
-                // Если обнаружен только один палец
-                if fingerCount == 1 {
-                    DispatchQueue.main.async {
-                        self?.onIndexFingerDetected?()
-                    }
+                    // Reset volume to 0.5
+                    isSettingVolume = true
+                    let slider = volumeView?.subviews.compactMap { $0 as? UISlider }.first
+                    slider?.setValue(0.5, animated: false)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { isSettingVolume = false }
                 }
             }
         }
-        
-        let handler = VNImageRequestHandler(cvPixelBuffer: frame.capturedImage, options: [:])
-        try? handler.perform([request])
-    }
-}
-
-struct BackgroundView: View {
-    var body: some View {
-        Color.black
-            .edgesIgnoringSafeArea(.all)
-    }
-}
-
-struct UnlockedView: View {
-    @Binding var isUnlocked: Bool
-    var body: some View {
-        ZStack {
-            Color.black
-                .edgesIgnoringSafeArea(.all)
-            VStack(spacing: 30) {
-                Image(systemName: "lock.open.fill")
-                    .font(.system(size: 80))
-                    .foregroundColor(.green)
-                Text("Unlocked!")
-                    .font(.system(size: 32, weight: .bold))
-                    .foregroundColor(.white)
-                Text("Welcome back!")
-                    .font(.system(size: 18))
-                    .foregroundColor(.white.opacity(0.7))
-                Button("Lock Again") {
-                    isUnlocked = false
-                }
-                .font(.system(size: 18, weight: .medium))
-                .foregroundColor(.white)
-                .padding(.horizontal, 30)
-                .padding(.vertical, 12)
-                .background(Color.white.opacity(0.2))
-                .cornerRadius(25)
-            }
+        // Перезапускаем MPVolumeView
+        let vw = MPVolumeView(frame: CGRect(x: -100, y: -100, width: 10, height: 10))
+        vw.alpha = 0.01
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let window = windowScene.windows.first {
+            window.addSubview(vw)
         }
+        self.volumeView = vw
+        print("App state restored.")
     }
 }
+
+

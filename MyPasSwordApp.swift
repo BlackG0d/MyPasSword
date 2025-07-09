@@ -6,6 +6,10 @@ struct MyPasSwordApp: App {
         WindowGroup {
             ContentView()
                 .preferredColorScheme(.light)
+                .onAppear {
+                    // Принудительно устанавливаем вертикальную ориентацию
+                    UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
+                }
         }
     }
 }
